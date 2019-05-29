@@ -8,7 +8,6 @@
 #define LOGE(FORMAT, ...) __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,FORMAT,##__VA_ARGS__)
 #define  argb(a,r,g,b) ( ((a) & 0xff) << 24 ) | ( ((b) & 0xff) << 16 ) | ( ((g) & 0xff) << 8 ) | ((r) & 0xff)
 
-
 typedef struct GifBean {
     //播放帧数，第几帧
     int current_frame;
@@ -20,47 +19,6 @@ typedef struct GifBean {
 
 } GifBean;
 
-void drawFram(GifFileType *pType, GifBean *pBean, AndroidBitmapInfo info, void *pVoid);
-
-extern "C"
-JNIEXPORT jlong JNICALL
-Java_com_xingzy_GifHandler_loadPath(JNIEnv *env, jobject instance, jstring path_) {
-    const char *path = env->GetStringUTFChars(path_, 0);
-    int error;
-    GifFileType *gifFileType = DGifOpenFileName(path, &error);
-
-    GifBean *gifBean = (GifBean *) malloc(sizeof(GifBean));
-    //清空内存地址
-    memset(gifBean, 0, sizeof(GifBean));
-    //初始化数组
-    gifBean->delays = (int *) malloc(sizeof(int) * gifFileType->ImageCount);
-    memset(gifBean->delays, 0, sizeof(int) * gifFileType->ImageCount);
-
-    gifFileType->UserData = gifBean;
-    gifBean->current_frame = 0;
-    gifBean->total_frame = gifFileType->ImageCount;
-
-    ExtensionBlock *ext = NULL;
-    for (int i = 0; i < gifFileType->ImageCount; ++i) {
-        SavedImage frame = gifFileType->SavedImages[i];
-        for (int j = 0; j < frame.ExtensionBlockCount; ++j) {
-            if (frame.ExtensionBlocks[j].Function == GRAPHICS_EXT_FUNC_CODE) {
-                ext = &frame.ExtensionBlocks[j];
-                break;
-            }
-        }
-        if (ext) {
-            int frame_delay = (ext->Bytes[2] | (ext->Bytes[1] << 8)) * 10;
-            LOGE("时间 %d", frame_delay);
-            gifBean->delays[i] = frame_delay;
-        }
-    }
-    LOGE("gif 长度大小 %d", gifFileType->ImageCount);
-
-    DGifSlurp(gifFileType);
-    env->ReleaseStringUTFChars(path_, path);
-    return (jlong) gifFileType;
-}
 
 void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo info, void *pixels) {
     //当前帧
@@ -92,6 +50,47 @@ void drawFrame(GifFileType *gifFileType, GifBean *gifBean, AndroidBitmapInfo inf
         px = (int *) ((char*)px + info.stride);
     }
 }
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_com_xingzy_GifHandler_loadPath(JNIEnv *env, jobject instance, jstring path_) {
+    const char *path = env->GetStringUTFChars(path_, 0);
+    int error;
+    GifFileType *gifFileType = DGifOpenFileName(path, &error);
+    DGifSlurp(gifFileType);
+
+    GifBean *gifBean = (GifBean *) malloc(sizeof(GifBean));
+    //清空内存地址
+    memset(gifBean, 0, sizeof(GifBean));
+    //初始化数组
+    gifBean->delays = (int *) malloc(sizeof(int) * gifFileType->ImageCount);
+    memset(gifBean->delays, 0, sizeof(int) * gifFileType->ImageCount);
+
+    gifFileType->UserData = gifBean;
+    gifBean->current_frame = 0;
+    gifBean->total_frame = gifFileType->ImageCount;
+
+    ExtensionBlock *ext = NULL;
+    for (int i = 0; i < gifFileType->ImageCount; ++i) {
+        SavedImage frame = gifFileType->SavedImages[i];
+        for (int j = 0; j < frame.ExtensionBlockCount; ++j) {
+            if (frame.ExtensionBlocks[j].Function == GRAPHICS_EXT_FUNC_CODE) {
+                ext = &frame.ExtensionBlocks[j];
+                break;
+            }
+        }
+        if (ext) {
+            int frame_delay = 10 * (ext->Bytes[2] << 8 | ext->Bytes[1]);
+            LOGE("时间  %d   ",frame_delay);
+            gifBean->delays[i] = frame_delay;
+        }
+    }
+    LOGE("gif 长度大小 %d", gifFileType->ImageCount);
+
+    env->ReleaseStringUTFChars(path_, path);
+    return (jlong) gifFileType;
+}
+
 
 
 extern "C"
